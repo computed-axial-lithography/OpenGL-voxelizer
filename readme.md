@@ -1,6 +1,6 @@
 # OpenGL Voxelizer
 
-This is a standalone voxelizer based on OpenGL
+This is a standalone voxelizer based on OpenGL. It is based on [OpenGL-STL-slicer](https://github.com/3D-Printing-for-Microfluidics/OpenGL-STL-slicer).
 
 ## Requirements
 - numpy
