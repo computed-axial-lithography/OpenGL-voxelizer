@@ -6,8 +6,8 @@ vox.addMeshes({
     r'core.stl':'attenuating_body',
     })
 
-print_body = vox.voxelize('print_body',layer_thickness=0.01,voxel_value=1)
-attenuating_body = vox.voxelize('attenuating_body',layer_thickness=0.01,voxel_value=2)
+print_body = vox.voxelize('print_body',xy_voxel_size=0.01,z_voxel_size=0.1,voxel_value=1)
+attenuating_body = vox.voxelize('attenuating_body',xy_voxel_size=0.01,z_voxel_size=0.1,voxel_value=2)
 
 combined = print_body + attenuating_body
 

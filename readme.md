@@ -31,8 +31,8 @@ vox.addMeshes({
     r'core.stl':'attenuating_body',
     })
 
-print_body = vox.voxelize('print_body',layer_thickness=0.01,voxel_value=1)
-attenuating_body = vox.voxelize('attenuating_body',layer_thickness=0.01,voxel_value=2)
+print_body = vox.voxelize('print_body',xy_voxel_size=0.01,z_voxel_size=0.01,voxel_value=1)
+attenuating_body = vox.voxelize('attenuating_body',xy_voxel_size=0.01,z_voxel_size=0.01,voxel_value=2)
 
 combined = print_body + attenuating_body
 ```
@@ -45,7 +45,17 @@ np.save(r'print_body_array.npy',print_body)
 np.save(r'attenuating_body_array.npy',attenuating_body)
 ```
 
-Note that the voxel value for the coil was set to be 1 and the core was set to be 2. This is why the colors of voxels in each body appear differently. The array was visualized using [Tomviz](https://tomviz.org/).
+Note that the voxel value for the coil was set to be 1 and the core was set to be 2. This is why the colors of voxels in each body appear differently: voxel_value = 1 is blue, voxel_value = 2 is red. The array was visualized using [Tomviz](https://tomviz.org/).
 
-![combined_array](images/combined_array.JPG)
+![combined_array](images/combined_array_isotropic.JPG)
 
+Non-isotropic voxel sizes in x-y and z dimensions are also supported. Below, the z voxel size is 10 times larger than the x-y voxel size.
+
+``` python
+print_body = vox.voxelize('print_body',xy_voxel_size=0.01,z_voxel_size=0.1,voxel_value=1)
+attenuating_body = vox.voxelize('attenuating_body',xy_voxel_size=0.01,z_voxel_size=0.1,voxel_value=2)
+
+combined = print_body + attenuating_body
+```
+
+![combined_array](images/combined_array_nonisotropic.JPG)

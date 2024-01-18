@@ -115,15 +115,15 @@ class Voxelizer():
         # after adding all meshes, update the global max and min bounds
         self._updateBounds()
 
-    def voxelize(self,body_name:str,layer_thickness:float,voxel_value:float,voxel_dtype:str='uint8',square_xy:bool=True,store_voxel_array:bool=False,slice_save_path:str=None):
+    def voxelize(self,body_name:str,xy_voxel_size:float,voxel_value:float,voxel_dtype:str='uint8',z_voxel_size=None,square_xy:bool=True,store_voxel_array:bool=False,slice_save_path:str=None):
         """
         Parameters
         ----------
         body_name : str
             name of the mesh to be voxelized
 
-        layer_thickness : float
-            thickness of each slice in voxelized array in same units as the mesh file 
+        xy_voxel_size : float
+            side length of square voxel cross section in x-y plane in voxelized array in same units as the mesh file
 
         voxel_value : float
             value of voxels in voxelized array
@@ -132,6 +132,9 @@ class Voxelizer():
 		
 		voxel_dtype : str, optional
             datatype of voxel array
+            
+        z_voxel_size : float, optional
+            thickness of each slice in voxelized array in same units as the mesh file, defaults to z_voxel_size = xy_voxel_size. This allows for non-isotropic voxel size in the z-axis
 
 		square_xy : bool, optional
             if the resulting voxel array should have equal number of voxels in x and y dimensions (i.e. square in x-y)
@@ -152,7 +155,7 @@ class Voxelizer():
         slicer.begin()
 
         # slice the selected mesh
-        voxel_array = slicer.slice(self.global_bounds,self.meshes[body_name],layer_thickness,square_xy,slice_save_path=slice_save_path,value=voxel_value,dtype=voxel_dtype)
+        voxel_array = slicer.slice(self.global_bounds,self.meshes[body_name],xy_voxel_size,z_voxel_size,square_xy,slice_save_path=slice_save_path,value=voxel_value,dtype=voxel_dtype)
         
         if store_voxel_array == True:
             self.voxel_arrays[body_name] = voxel_array
@@ -250,7 +253,7 @@ class OpenGLSlicer():
         self.window.flip()
         self.window.clear()
 
-    def slice(self,bounds:Bounds,mesh:BodyMesh,layer_thickness:float,square_xy:bool=True,slice_save_path:str=None,value=1.0,dtype:str='uint8'):
+    def slice(self,bounds:Bounds,mesh:BodyMesh,xy_voxel_size:float,z_voxel_size:None,square_xy:bool=True,slice_save_path:str=None,value=1.0,dtype:str='uint8'):
         """
         Parameters
         ----------
@@ -262,6 +265,12 @@ class OpenGLSlicer():
         layer_thickness : float
             thickness of each slice in voxelized array in same units as the mesh file
         
+        xy_voxel_size : float
+            side length of square voxel cross section in x-y plane in voxelized array in same units as the mesh file
+            
+        z_voxel_size : float, optional
+            thickness of each slice in voxelized array in same units as the mesh file, defaults to z_voxel_size = xy_voxel_size. This allows for non-isotropic voxel size in the z-axis
+            
         square_xy : bool, optional
             if the resulting voxel array should have equal number of voxels in x and y dimensions (i.e. square in x-y)
         
@@ -278,15 +287,19 @@ class OpenGLSlicer():
         voxel_array : np.ndarray
             voxelized array of the selected mesh
         """
+        # check if z_voxel_size is specified, if not it should be equal to xy_voxel_size for isotropic voxels
+        if z_voxel_size == None:
+            z_voxel_size = xy_voxel_size
+
         # update bounds
         self.bounds = bounds
 
 
 
         # preallocate voxel_array for the slicer
-        length_x_voxels = int(self.bounds.length_x/layer_thickness)
-        length_y_voxels = int(self.bounds.length_y/layer_thickness)
-        length_z_voxels = int(np.floor(self.bounds.length_z/layer_thickness))
+        length_x_voxels = int(self.bounds.length_x/xy_voxel_size)
+        length_y_voxels = int(self.bounds.length_y/xy_voxel_size)
+        length_z_voxels = int(np.floor(self.bounds.length_z/z_voxel_size))
         self.slicer_bounds = Bounds()
 
         if square_xy:
@@ -298,7 +311,7 @@ class OpenGLSlicer():
             norms = np.linalg.norm(bound_corner_vectors,axis=1)
             norm_max = np.max(norms,axis=0)
             diagonal_length = 2*norm_max
-            diagonal_length_voxels = int(diagonal_length/layer_thickness)
+            diagonal_length_voxels = int(diagonal_length/xy_voxel_size)
             slicer_length_x = diagonal_length_voxels
             slicer_length_y = diagonal_length_voxels
             self.slicer_bounds.xmin = -norm_max
@@ -325,7 +338,7 @@ class OpenGLSlicer():
         self.shader = ShaderProgram()
 
         # each "slice" is a view mesh cross section at the center of each voxel thickness i.e. layer_thickness/2. First slice is at layer_thickness/2
-        translation = layer_thickness/2
+        translation = z_voxel_size/2
 
 
         for i in tqdm.tqdm(range(length_z_voxels)):
@@ -344,7 +357,7 @@ class OpenGLSlicer():
             voxel_array[:,:,i] = array
             
             # increment slicing plane by one layer thickness
-            translation += layer_thickness
+            translation += z_voxel_size
             
             self._drawWindow()
 
