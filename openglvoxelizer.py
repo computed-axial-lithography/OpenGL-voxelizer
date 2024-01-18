@@ -115,7 +115,7 @@ class Voxelizer():
         # after adding all meshes, update the global max and min bounds
         self._updateBounds()
 
-    def voxelize(self,body_name:str,layer_thickness:float,voxel_value:float,store_voxel_array:bool=False,slice_save_path:str=None):
+    def voxelize(self,body_name:str,layer_thickness:float,voxel_value:float,voxel_dtype:str='uint8',square_xy:bool=True,store_voxel_array:bool=False,slice_save_path:str=None):
         """
         Parameters
         ----------
@@ -129,7 +129,13 @@ class Voxelizer():
             value of voxels in voxelized array
 
             Only homogeneous voxel values are implemented
+		
+		voxel_dtype : str, optional
+            datatype of voxel array
 
+		square_xy : bool, optional
+            if the resulting voxel array should have equal number of voxels in x and y dimensions (i.e. square in x-y)
+            
         store_voxel_array : bool, optional
             store the voxel array in the Voxelizer object. Retrieve with voxelizer_object.voxel_arrays[body_name]
 
@@ -145,13 +151,8 @@ class Voxelizer():
         slicer = OpenGLSlicer()
         slicer.begin()
 
-        # prepare the OpenGL window for rendering at the selected x-y grid size i.e. the window size in pixels is the same as the length in x-y voxels
-        length_x_voxels = int(self.global_bounds.length_x/layer_thickness)
-        length_y_voxels = int(self.global_bounds.length_y/layer_thickness)
-        slicer.prepareSlice(length_x_voxels,length_y_voxels)
-
         # slice the selected mesh
-        voxel_array = slicer.slice(self.global_bounds,self.meshes[body_name],layer_thickness,slice_save_path=slice_save_path,value=voxel_value)
+        voxel_array = slicer.slice(self.global_bounds,self.meshes[body_name],layer_thickness,square_xy,slice_save_path=slice_save_path,value=voxel_value,dtype=voxel_dtype)
         
         if store_voxel_array == True:
             self.voxel_arrays[body_name] = voxel_array
@@ -249,7 +250,7 @@ class OpenGLSlicer():
         self.window.flip()
         self.window.clear()
 
-    def slice(self,bounds:Bounds,mesh:BodyMesh,layer_thickness:float,slice_save_path:str=None,value:np.uint8=1):
+    def slice(self,bounds:Bounds,mesh:BodyMesh,layer_thickness:float,square_xy:bool=True,slice_save_path:str=None,value=1.0,dtype:str='uint8'):
         """
         Parameters
         ----------
@@ -261,10 +262,13 @@ class OpenGLSlicer():
         layer_thickness : float
             thickness of each slice in voxelized array in same units as the mesh file
         
-        slice_save_path : str
+        square_xy : bool, optional
+            if the resulting voxel array should have equal number of voxels in x and y dimensions (i.e. square in x-y)
+        
+        slice_save_path : str, optional
             file path to directory in which to save .png images of each slice
         
-        value : np.uint8
+        value : np.uint8, optional
             value of voxels in voxelized array
 
             Only homogeneous voxel values are implemented
@@ -277,6 +281,44 @@ class OpenGLSlicer():
         # update bounds
         self.bounds = bounds
 
+
+
+        # preallocate voxel_array for the slicer
+        length_x_voxels = int(self.bounds.length_x/layer_thickness)
+        length_y_voxels = int(self.bounds.length_y/layer_thickness)
+        length_z_voxels = int(np.floor(self.bounds.length_z/layer_thickness))
+        self.slicer_bounds = Bounds()
+
+        if square_xy:
+            # calculate diagonal such that the bounds will fit within the circle inscribed in the square grid
+            bound_corner_vectors = np.array([[self.bounds.xmin,self.bounds.ymin],
+                                      [self.bounds.xmin,self.bounds.ymax],
+                                      [self.bounds.xmax,self.bounds.ymin],
+                                      [self.bounds.xmax,self.bounds.ymax]])
+            norms = np.linalg.norm(bound_corner_vectors,axis=1)
+            norm_max = np.max(norms,axis=0)
+            diagonal_length = 2*norm_max
+            diagonal_length_voxels = int(diagonal_length/layer_thickness)
+            slicer_length_x = diagonal_length_voxels
+            slicer_length_y = diagonal_length_voxels
+            self.slicer_bounds.xmin = -norm_max
+            self.slicer_bounds.xmax = norm_max
+            self.slicer_bounds.ymin = -norm_max
+            self.slicer_bounds.ymax = norm_max
+        else:
+            slicer_length_x = length_x_voxels
+            slicer_length_y = length_y_voxels
+            self.slicer_bounds.xmin = bounds.xmin
+            self.slicer_bounds.xmax = bounds.xmax
+            self.slicer_bounds.ymin = bounds.ymin
+            self.slicer_bounds.ymax = bounds.ymax
+
+        voxel_array = np.zeros((slicer_length_y,slicer_length_x,length_z_voxels),dtype=dtype)
+
+
+        # prepare the OpenGL window for rendering at the selected x-y grid size i.e. the window size in pixels is the same as the length in x-y voxels
+        self.prepareSlice(slicer_length_x,slicer_length_y)
+
         self._makeMasks(mesh)
         
         # setup OpenGL shader
@@ -284,14 +326,6 @@ class OpenGLSlicer():
 
         # each "slice" is a view mesh cross section at the center of each voxel thickness i.e. layer_thickness/2. First slice is at layer_thickness/2
         translation = layer_thickness/2
-
-
-        # preallocate voxel_array for the slicer
-        length_x_voxels = int(self.bounds.length_x/layer_thickness)
-        length_y_voxels = int(self.bounds.length_y/layer_thickness)
-        length_z_voxels = int(np.floor(self.bounds.length_z/layer_thickness))
-
-        voxel_array = np.zeros((length_y_voxels,length_x_voxels,length_z_voxels),dtype=np.uint8)
 
 
         for i in tqdm.tqdm(range(length_z_voxels)):
@@ -336,13 +370,13 @@ class OpenGLSlicer():
         # a mask vertex array for stencil buffer to subtract
         # uses global bounds of all meshes 
         maskVert = np.array(
-            [[self.bounds.xmin, self.bounds.ymin, 0],
-            [self.bounds.xmax, self.bounds.ymin, 0],
-            [self.bounds.xmax, self.bounds.ymax, 0],
+            [[self.slicer_bounds.xmin, self.slicer_bounds.ymin, 0],
+            [self.slicer_bounds.xmax, self.slicer_bounds.ymin, 0],
+            [self.slicer_bounds.xmax, self.slicer_bounds.ymax, 0],
 
-            [self.bounds.xmin, self.bounds.ymin, 0],
-            [self.bounds.xmax, self.bounds.ymax, 0],
-            [self.bounds.xmin, self.bounds.ymax, 0]], dtype=GLfloat
+            [self.slicer_bounds.xmin, self.slicer_bounds.ymin, 0],
+            [self.slicer_bounds.xmax, self.slicer_bounds.ymax, 0],
+            [self.slicer_bounds.xmin, self.slicer_bounds.ymax, 0]], dtype=GLfloat
         )
 
         # make VAO for drawing mask
@@ -375,9 +409,8 @@ class OpenGLSlicer():
         glBindTexture(GL_TEXTURE_2D, 0)
 
     def _setModelLocation(self,translation):
-        # uses global bounds of all meshes 
-        proj = orthoMatrix(self.bounds.xmin, self.bounds.xmax,
-                        self.bounds.ymin, self.bounds.ymax,
+        proj = orthoMatrix(self.slicer_bounds.xmin, self.slicer_bounds.xmax,
+                        self.slicer_bounds.ymin, self.slicer_bounds.ymax,
                         -self.bounds.zmax, self.bounds.zmax, GLfloat)
 
         self.shader.setMat4("proj", proj)
